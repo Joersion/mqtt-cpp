@@ -2,6 +2,8 @@
 #include <memory>
 #include <string>
 
+class MqttConnectionImpl;
+
 namespace mqtt {
     struct ConnectOpts {
         std::string uri;
@@ -23,16 +25,10 @@ namespace mqtt {
     };
 };  // namespace mqtt
 
-class MqttConnectionImpl;
 class MqttConnection {
-    friend class MqttConnectionImpl;
-
 public:
-public:
-    MqttConnection() : impl_(std::make_unique<MqttConnectionImpl>(*this)) {
-    }
-    ~MqttConnection() {
-    }
+    MqttConnection();
+    virtual ~MqttConnection();
 
 public:
     bool start(const mqtt::ConnectOpts& opt);
@@ -40,12 +36,14 @@ public:
     bool delSubscribe(const std::string& topic);
     bool sendMsg(const std::string& topic, const std::string& msg, int qos = 0);
     void close();
+    std::string getUri();
+    std::string getClientId();
 
 public:
     // 连接成功
-    virtual void onConnect() = 0;
+    virtual void onConnect(const std::string& desc) = 0;
     // 连接断开（会自动重连）
-    virtual void onConnectLost(const std::string& error) = 0;
+    virtual void onConnectLost(const std::string& desc) = 0;
     // 连接失败
     virtual void onConnectFail(const std::string& error, int code) = 0;
     // 收到数据
@@ -57,6 +55,6 @@ public:
     // 操作错误
     virtual void onError(const std::string err) = 0;
 
-public:
+private:
     std::unique_ptr<MqttConnectionImpl> impl_;
 };

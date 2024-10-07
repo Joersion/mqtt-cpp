@@ -6,16 +6,17 @@ ADD_DEFINITIONS( -O3 )
 
 set(CMAKE_CXX_STANDARD 17)
 
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+# set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(CMAKE_PREFIX_PATH "~/work/mqtt/x86")
 
-find_package(eclipse-paho-mqtt-c REQUIRED)
+set(eclipse-paho-mqtt-c_INCLUDE_DIRS ~/work/mqtt/x86/include)
+set(eclipse-paho-mqtt-c_LIBRARIES ~/work/mqtt/x86/lib/libpaho-mqtt3a.so) 
 
 file(GLOB SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 
-add_library(mqtt ${SOURCES})
+add_library(mqtt SHARED ${SOURCES})
 
-target_include_directories(mqtt PRIVATE ${Mqtt_INCLUDE_DIRS})
+target_include_directories(mqtt PRIVATE ${eclipse-paho-mqtt-c_INCLUDE_DIRS})
 
-target_link_libraries(mqtt PRIVATE ${Mqtt_LIBRARIES})
+target_link_libraries(mqtt PRIVATE ${eclipse-paho-mqtt-c_LIBRARIES})
