@@ -42,7 +42,7 @@ class MqttClientPublisher : public MqttClient {
     // 连接成功
     virtual void onConnect(const std::string& desc) override {
         std::cout << "mqtt 连接成功,desc:" << desc << ",uri:" << getUri() << ",id:" << getClientId() << std::endl;
-        sendMsg("test/topic", "hello!");
+        sendMsg("test/topic", "hello!", 2);
     }
     // 发送数据
     virtual void onSend() override {
@@ -68,8 +68,11 @@ int main() {
         mqtt::ConnectOpts opt;
         opt.uri = "tcp://localhost:1883";
         opt.clientId = "dev0";
-        client.start(opt, {{"test/topic", 0}});
-        while (1) std::this_thread::sleep_for(std::chrono::seconds(10));
+        client.connect(opt, {{"test/topic", 2}});
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        opt.clientId = "dev2";
+        client.connect(opt, {{"test/topic", 2}});
+        std::this_thread::sleep_for(std::chrono::seconds(10));
     });
     t.detach();
     std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -78,8 +81,8 @@ int main() {
         mqtt::ConnectOpts opt;
         opt.uri = "tcp://localhost:1883";
         opt.clientId = "dev1";
-        client.start(opt);
-        while (1) std::this_thread::sleep_for(std::chrono::seconds(10));
+        client.connect(opt);
+        std::this_thread::sleep_for(std::chrono::seconds(10));
     });
     t1.detach();
 

@@ -33,12 +33,11 @@ public:
     virtual ~MqttConnection();
 
 public:
-    bool start(const mqtt::ConnectOpts& opt, const std::map<std::string, int>& subscribes = {});
+    bool connect(const mqtt::ConnectOpts& opt, const std::map<std::string, int>& subscribes = {});
     bool addSubscribe(const std::string& topic, int qos = 1);
     bool delSubscribe(const std::string& topic);
     bool loadSubscribes();
     bool sendMsg(const std::string& topic, const std::string& msg, int qos = 0);
-    void close();
     std::string getUri();
     std::string getClientId();
 

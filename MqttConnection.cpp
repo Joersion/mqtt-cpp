@@ -68,7 +68,6 @@ public:
     }
 
     void closeObject() {
-        std::lock_guard<std::mutex> lock(mutex_);
         if (obj_) {
             isClose_.store(true);
             MQTTAsync_destroy(&obj_);
@@ -105,12 +104,11 @@ private:
         connOpts.minRetryInterval = opt.minReconnectTime;  // 最小重连间隔时间(秒)，每次失败重连间隔时间都会加倍
         connOpts.maxRetryInterval = opt.maxReconnectTime;  // 最大重连间隔时间(秒)
         connOpts.keepAliveInterval = opt.keeplive;
+        if (obj_) {
+            close();
+        }
         isClose_.store(false);
         std::lock_guard<std::mutex> lock(mutex_);
-        if (obj_) {
-            self_.onError("mqtt cteate error : mqtt has exist , please close this connect after cteate");
-            return false;
-        }
         MQTTAsync_create(&obj_, opt.uri.data(), opt.clientId.data(), MQTTCLIENT_PERSISTENCE_NONE, NULL);
         MQTTAsync_setCallbacks(obj_, this, connlost, msgarrvd, NULL);
         MQTTAsync_setConnected(obj_, this, connsucess);
@@ -248,10 +246,10 @@ MqttConnection::~MqttConnection() {
     if (impl_->isClose()) {
         return;
     }
-    close();
+    impl_->close();
 }
 
-bool MqttConnection::start(const mqtt::ConnectOpts& opt, const std::map<std::string, int>& subscribes) {
+bool MqttConnection::connect(const mqtt::ConnectOpts& opt, const std::map<std::string, int>& subscribes) {
     return impl_->cteate(opt, subscribes);
 }
 
@@ -271,13 +269,10 @@ bool MqttConnection::sendMsg(const std::string& topic, const std::string& msg, i
     return impl_->sendMsg(topic, msg, qos);
 }
 
-void MqttConnection::close() {
-    impl_->close();
-}
-
 std::string MqttConnection::getUri() {
     return impl_->getUri();
 }
+
 std::string MqttConnection::getClientId() {
     return impl_->getClientId();
 }
