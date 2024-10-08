@@ -97,7 +97,7 @@ private:
         MQTTAsync_connectOptions connOpts = MQTTAsync_connectOptions_initializer;
         connOpts.context = this;
         connOpts.onFailure = connfail;  // 连接失败回调
-        connOpts.cleansession = 1;
+        connOpts.cleansession = false;
         connOpts.username = opt.username.data();           // 用户名
         connOpts.password = opt.password.data();           // 密码
         connOpts.automaticReconnect = 1;                   // 开启断开自动重连
@@ -109,7 +109,7 @@ private:
         }
         isClose_.store(false);
         std::lock_guard<std::mutex> lock(mutex_);
-        MQTTAsync_create(&obj_, opt.uri.data(), opt.clientId.data(), MQTTCLIENT_PERSISTENCE_NONE, NULL);
+        MQTTAsync_create(&obj_, opt.uri.data(), opt.clientId.data(), MQTTCLIENT_PERSISTENCE_DEFAULT, NULL);
         MQTTAsync_setCallbacks(obj_, this, connlost, msgarrvd, NULL);
         MQTTAsync_setConnected(obj_, this, connsucess);
         if ((rc = MQTTAsync_connect(obj_, &connOpts)) != MQTTASYNC_SUCCESS)  // 尝试连接
@@ -157,7 +157,7 @@ private:
         MQTTAsync_message pubmsg = MQTTAsync_message_initializer;
         pubmsg.payload = (void*)msg.data();
         pubmsg.payloadlen = msg.length();
-        pubmsg.qos = 0;
+        pubmsg.qos = qos;
 
         MQTTAsync_responseOptions resp = MQTTAsync_responseOptions_initializer;
         resp.context = this;
@@ -325,6 +325,7 @@ static int msgarrvd(void* context, char* topicName, int topicLen, MQTTAsync_mess
     msg.content = (char*)message->payload;
     msg.qos = message->qos;
     msg.version = message->struct_version;
+    msg.retained = (bool)message->retained;
     impl->getSelf().onMsg(msg);
 
     MQTTAsync_freeMessage(&message);

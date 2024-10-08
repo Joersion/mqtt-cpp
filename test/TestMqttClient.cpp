@@ -24,6 +24,7 @@ class MqttClient : public MqttConnection {
         std::cout << "msg.qos:" << msg.qos << std::endl;
         std::cout << "msg.topic:" << msg.topic << std::endl;
         std::cout << "msg.version:" << msg.version << std::endl;
+        std::cout << "msg.retained:" << msg.retained << std::endl;
     }
     // 发送数据
     virtual void onSend() override {
@@ -42,7 +43,6 @@ class MqttClientPublisher : public MqttClient {
     // 连接成功
     virtual void onConnect(const std::string& desc) override {
         std::cout << "mqtt 连接成功,desc:" << desc << ",uri:" << getUri() << ",id:" << getClientId() << std::endl;
-        sendMsg("test/topic", "hello!", 2);
     }
     // 发送数据
     virtual void onSend() override {
@@ -63,29 +63,27 @@ class MqttClientSubscriber : public MqttClient {
 };
 
 int main() {
-    std::thread t([]() {
-        MqttClientSubscriber client;
-        mqtt::ConnectOpts opt;
-        opt.uri = "tcp://localhost:1883";
-        opt.clientId = "dev0";
-        client.connect(opt, {{"test/topic", 2}});
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        opt.clientId = "dev2";
-        client.connect(opt, {{"test/topic", 2}});
-        std::this_thread::sleep_for(std::chrono::seconds(10));
-    });
-    t.detach();
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    std::thread t1([]() {
-        MqttClientPublisher client;
-        mqtt::ConnectOpts opt;
-        opt.uri = "tcp://localhost:1883";
-        opt.clientId = "dev1";
-        client.connect(opt);
-        std::this_thread::sleep_for(std::chrono::seconds(10));
-    });
-    t1.detach();
+    MqttClientPublisher client;
+    mqtt::ConnectOpts opt1;
+    opt1.uri = "tcp://localhost:1883";
+    opt1.clientId = "dev1";
+    client.connect(opt1);
 
-    getchar();
+    MqttClientSubscriber client2;
+    mqtt::ConnectOpts opt;
+    opt.uri = "tcp://localhost:1883";
+    opt.clientId = "dev0";
+    client2.connect(opt, {{"test/topic", 1}});
+
+    while (1) {
+        char ch = getchar();
+        if (ch == 's') {
+            client.sendMsg("test/topic", "hello!", 1);
+        } else if (ch == 'r') {
+            client2.connect(opt, {{"test/topic", 1}});
+        } else if (ch == 'q') {
+            break;
+        }
+    }
     return 0;
 }

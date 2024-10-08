@@ -24,6 +24,7 @@ namespace mqtt {
         std::string topic;
         std::string content;
         int qos;
+        bool retained;
     };
 };  // namespace mqtt
 
