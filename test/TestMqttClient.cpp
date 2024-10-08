@@ -34,7 +34,7 @@ class MqttClient : public MqttConnection {
     }
     // 操作错误
     virtual void onError(const std::string err) override {
-        std::cout << "mqtt 操作错误," << ",err:" << err << std::endl;
+        std::cout << "mqtt 操作错误," << "err:" << err << std::endl;
     }
 };
 
@@ -54,7 +54,11 @@ class MqttClientSubscriber : public MqttClient {
     // 连接成功
     virtual void onConnect(const std::string& desc) override {
         std::cout << "mqtt 连接成功,desc:" << desc << ",uri:" << getUri() << ",id:" << getClientId() << std::endl;
-        addSubscribe("test/topic");
+        loadSubscribes();
+    }
+    // 连接失败
+    virtual void onConnectFail(const std::string& error, int code) override {
+        std::cout << "mqtt 连接失败,error:" << error << ",code:" << code << ",uri:" << getUri() << ",id:" << getClientId() << std::endl;
     }
 };
 
@@ -64,8 +68,8 @@ int main() {
         mqtt::ConnectOpts opt;
         opt.uri = "tcp://localhost:1883";
         opt.clientId = "dev0";
-        client.start(opt);
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        client.start(opt, {{"test/topic", 0}});
+        while (1) std::this_thread::sleep_for(std::chrono::seconds(10));
     });
     t.detach();
     std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -75,7 +79,7 @@ int main() {
         opt.uri = "tcp://localhost:1883";
         opt.clientId = "dev1";
         client.start(opt);
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        while (1) std::this_thread::sleep_for(std::chrono::seconds(10));
     });
     t1.detach();
 

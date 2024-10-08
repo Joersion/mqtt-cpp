@@ -6,7 +6,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
-#include <set>
 #include <thread>
 
 #define UNUSED(x) (void)(x)
@@ -44,7 +43,7 @@ class MqttConnectionImpl {
     };
 
 public:
-    MqttConnectionImpl(MqttConnection& self) : obj_(nullptr), self_(self), isClose_(true) {
+    MqttConnectionImpl(MqttConnection& self) : obj_(nullptr), self_(self), isClose_(true), isConnect_(false) {
     }
 
     ~MqttConnectionImpl() {
@@ -60,14 +59,18 @@ public:
         return isClose_.load();
     }
 
+    bool isConnect() {
+        return isConnect_.load();
+    }
+
+    void setConnect(bool v) {
+        isConnect_.store(v);
+    }
+
     void closeObject() {
-        if (isClose()) {
-            return;
-        }
-        waitClose();
-        isClose_.store(true);
         std::lock_guard<std::mutex> lock(mutex_);
         if (obj_) {
+            isClose_.store(true);
             MQTTAsync_destroy(&obj_);
             obj_ = nullptr;
         }
@@ -81,16 +84,16 @@ public:
         return clientId_;
     }
 
-    void waitClose() {
+    void waitDisConnect() {
         sem_.wait();
     }
 
-    void postClose() {
+    void postDisConnect() {
         sem_.post();
     }
 
 private:
-    bool cteate(const mqtt::ConnectOpts& opt) {
+    bool cteate(const mqtt::ConnectOpts& opt, const std::map<std::string, int>& subscribes) {
         int rc = 0;
         MQTTAsync_connectOptions connOpts = MQTTAsync_connectOptions_initializer;
         connOpts.context = this;
@@ -117,6 +120,7 @@ private:
         }
         uri_ = opt.uri;
         clientId_ = opt.clientId;
+        subscribes_ = subscribes;
         return true;
     }
 
@@ -126,7 +130,7 @@ private:
             self_.onError("mqtt addSubscribe error:no object, topic:" + topic);
             return false;
         }
-        subscribes_.insert(topic);
+        subscribes_[topic] = qos;
         int rc = 0;
         if ((rc = MQTTAsync_subscribe(obj_, topic.data(), qos, nullptr)) != MQTTASYNC_SUCCESS)  // 尝试订阅主题
         {
@@ -185,21 +189,43 @@ private:
     }
 
     bool close() {
+        if (isConnect()) {
+            int rc = 0;
+            MQTTAsync_disconnectOptions opts = MQTTAsync_disconnectOptions_initializer;
+            opts.context = this;
+            opts.onSuccess = connclose;
+            opts.onFailure = conncloseFail;
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!obj_) {
+                self_.onError("mqtt close error:not find object");
+                return false;
+            }
+
+            if ((rc = MQTTAsync_disconnect(obj_, &opts)) != MQTTASYNC_SUCCESS) {
+                self_.onError("mqtt close error,code:" + std::to_string(rc));
+            }
+            waitDisConnect();
+            setConnect(false);
+            closeObject();
+        } else {
+            closeObject();
+        }
+        return true;
+    }
+
+    bool loadSubscribes() {
         int rc = 0;
-        MQTTAsync_disconnectOptions opts = MQTTAsync_disconnectOptions_initializer;
-        opts.context = this;
-        opts.onSuccess = connclose;
-        opts.onFailure = conncloseFail;
         std::lock_guard<std::mutex> lock(mutex_);
         if (!obj_) {
-            self_.onError("mqtt close error:not find object");
+            self_.onError("mqtt loadSubscribes error:no object");
             return false;
         }
-
-        if ((rc = MQTTAsync_disconnect(obj_, &opts)) != MQTTASYNC_SUCCESS) {
-            self_.onError("mqtt close error,code:" + std::to_string(rc));
+        for (auto sub : subscribes_) {
+            if ((rc = MQTTAsync_subscribe(obj_, sub.first.data(), sub.second, nullptr)) != MQTTASYNC_SUCCESS)  // 尝试订阅主题
+            {
+                self_.onError("mqtt loadSubscribe error,code:" + std::to_string(rc) + ",topic:" + sub.first);
+            }
         }
-        closeObject();
         return true;
     }
 
@@ -207,8 +233,9 @@ private:
     MQTTAsync obj_;
     MqttConnection& self_;
     std::mutex mutex_;
-    std::set<std::string> subscribes_;
+    std::map<std::string, int> subscribes_;
     std::atomic<bool> isClose_;
+    std::atomic<bool> isConnect_;
     std::string uri_;
     std::string clientId_;
     Semaphore sem_;
@@ -224,8 +251,8 @@ MqttConnection::~MqttConnection() {
     close();
 }
 
-bool MqttConnection::start(const mqtt::ConnectOpts& opt) {
-    return impl_->cteate(opt);
+bool MqttConnection::start(const mqtt::ConnectOpts& opt, const std::map<std::string, int>& subscribes) {
+    return impl_->cteate(opt, subscribes);
 }
 
 bool MqttConnection::addSubscribe(const std::string& topic, int qos) {
@@ -234,6 +261,10 @@ bool MqttConnection::addSubscribe(const std::string& topic, int qos) {
 
 bool MqttConnection::delSubscribe(const std::string& topic) {
     return impl_->delSubscribe(topic);
+}
+
+bool MqttConnection::loadSubscribes() {
+    return impl_->loadSubscribes();
 }
 
 bool MqttConnection::sendMsg(const std::string& topic, const std::string& msg, int qos) {
@@ -252,12 +283,16 @@ std::string MqttConnection::getClientId() {
 }
 
 static void connsucess(void* context, char* cause) {
-    UNUSED(cause);
     MqttConnectionImpl* impl = (MqttConnectionImpl*)context;
     if (impl->isClose()) {
         return;
     }
-    impl->getSelf().onConnect(cause);
+    std::string err;
+    if (cause != nullptr) {
+        err = cause;
+    }
+    impl->setConnect(true);
+    impl->getSelf().onConnect(err);
 }
 
 static void connlost(void* context, char* cause) {
@@ -265,8 +300,12 @@ static void connlost(void* context, char* cause) {
     if (impl->isClose()) {
         return;
     }
-    std::string error(cause);
-    impl->getSelf().onConnectLost("[connlost]:" + error);
+    std::string err;
+    if (cause != nullptr) {
+        err = cause;
+    }
+    impl->setConnect(false);
+    impl->getSelf().onConnectLost(err);
 }
 
 static void connfail(void* context, MQTTAsync_failureData* response) {
@@ -274,6 +313,7 @@ static void connfail(void* context, MQTTAsync_failureData* response) {
     if (impl->isClose()) {
         return;
     }
+    impl->setConnect(false);
     impl->getSelf().onConnectFail(response->message, response->code);
 }
 
@@ -301,20 +341,20 @@ static void connclose(void* context, MQTTAsync_successData* response) {
     UNUSED(response);
     MqttConnectionImpl* impl = (MqttConnectionImpl*)context;
     if (impl->isClose()) {
-        impl->postClose();
+        impl->postDisConnect();
         return;
     }
-    impl->postClose();
+    impl->postDisConnect();
 }
 
 static void conncloseFail(void* context, MQTTAsync_failureData* response) {
     UNUSED(response);
     MqttConnectionImpl* impl = (MqttConnectionImpl*)context;
     if (impl->isClose()) {
-        impl->postClose();
+        impl->postDisConnect();
         return;
     }
-    impl->postClose();
+    impl->postDisConnect();
 }
 
 static void sendsucess(void* context, MQTTAsync_successData* response) {
