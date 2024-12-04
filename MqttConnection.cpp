@@ -304,12 +304,16 @@ static void connlost(void* context, char* cause) {
 }
 
 static void connfail(void* context, MQTTAsync_failureData* response) {
-    MqttConnectionImpl* impl = (MqttConnectionImpl*)context;
-    if (impl->isClose()) {
+       MqttConnectionImpl* impl = (MqttConnectionImpl*)context;
+    if (context && impl->isClose()) {
         return;
     }
     impl->setConnect(false);
-    impl->getSelf().onConnectFail(response->message, response->code);
+    std::string str;
+    if (response->message) {
+        str = response->message;
+    }
+    impl->getSelf().onConnectFail(str, response->code);
 }
 
 static int msgarrvd(void* context, char* topicName, int topicLen, MQTTAsync_message* message) {
@@ -322,7 +326,7 @@ static int msgarrvd(void* context, char* topicName, int topicLen, MQTTAsync_mess
     mqtt::recvMsg msg;
     msg.topic = topicName;
     msg.msgId = message->msgid;
-    msg.content = (char*)message->payload;
+    msg.content = std::string((char*)message->payload, message->payloadlen);
     msg.qos = message->qos;
     msg.version = message->struct_version;
     msg.retained = (bool)message->retained;
